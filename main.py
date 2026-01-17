@@ -6,11 +6,16 @@ from core.database import engine, Base, get_db
 from core.deps import get_current_user
 from core.security import get_password_hash, verify_password, create_access_token
 from models.user import User
+from models.task import Task
 from schemas.auth import TokenResponse, LoginRequest
 from schemas.user import UserRead, UserCreate
+from routers.tasks import router as tasks_router
+
 
 Base.metadata.create_all(bind=engine)
+
 app = FastAPI(title="ToDo Manager")
+app.include_router(tasks_router)
 
 
 @app.get("/me")
