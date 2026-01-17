@@ -8,6 +8,7 @@ from core.security import SECRET_KEY, ALGORITHM
 from models.user import User
 from typing import cast
 
+#будет требовать заголовок
 security = HTTPBearer()
 
 
@@ -15,7 +16,7 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ) -> User:
-    token = credentials.credentials
+    token = credentials.credentials #извлекаем токен
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])

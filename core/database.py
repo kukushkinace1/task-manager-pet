@@ -1,13 +1,15 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+from config import DATABASE_URL
 
 
-DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/tasks"
-
+# соединение с базой
 engine = create_engine(DATABASE_URL)
 
+# фабрика сессий, создает сессии. Сам комичу, сам отправляю
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+#реестр
 Base = declarative_base()
 
 
