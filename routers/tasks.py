@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import cast
+from redis.exceptions import RedisError
+import logging
 
 from models.user import User
 from models.task import Task
@@ -13,6 +15,8 @@ from core.cache import (
     cache_set_json,
     invalidate_tasks_cache,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -27,8 +31,10 @@ def create_task(data: TaskCreate, db: Session = Depends(get_db), current_user: U
     db.add(task)
     db.commit()
     db.refresh(task)
-
-    invalidate_tasks_cache(current_user.id)
+    try:
+        invalidate_tasks_cache(current_user.id)
+    except RedisError as e:
+        logger.warning(f"Redis unavailable during invalidate_tasks_cache: {e}")
 
     return task
 
@@ -44,13 +50,16 @@ def list_tasks(
     user_id = current_user.id
     key = tasks_cache_key(user_id, limit, offset)
 
-    cached = cache_get_json(key)
-
-    if cached is not None:
-        print("CACHE HIT", key)
-        return cached
+    try:
+        cached = cache_get_json(key)
+        if cached is not None:
+            print("CACHE HIT", key)
+            return cached
+    except RedisError as e:
+        logger.warning(f"Redis unavailable during list_tasks cache read: {e}")
 
     print("CACHE MISS", key)
+
     tasks = (
         db.query(Task)
         .filter(Task.id_owner == cast(int, current_user.id))
@@ -61,7 +70,11 @@ def list_tasks(
     )
 
     payload = [TaskRead.model_validate(t).model_dump() for t in tasks]
-    cache_set_json(key, payload)
+
+    try:
+        cache_set_json(key, payload)
+    except RedisError as e:
+        logger.warning(f"Redis unavailable during cache_set: {e}")
 
     return payload
 
@@ -109,7 +122,10 @@ def update_task(
     db.commit()
     db.refresh(task)
 
-    invalidate_tasks_cache(current_user.id)
+    try:
+        invalidate_tasks_cache(current_user.id)
+    except RedisError as e:
+        logger.warning(f"Redis unavailable during invalidate_tasks_cache: {e}")
 
     return task
 
@@ -132,6 +148,9 @@ def delete_task(
     db.delete(task)
     db.commit()
 
-    invalidate_tasks_cache(current_user.id)
+    try:
+        invalidate_tasks_cache(current_user.id)
+    except RedisError as e:
+        logger.warning(f"Redis unavailable during invalidate_tasks_cache: {e}")
 
     return {"status": "deleted"}
