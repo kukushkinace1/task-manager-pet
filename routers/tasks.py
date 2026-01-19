@@ -1,12 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from typing import cast
 
-from core.database import get_db
-from core.deps import get_current_user
 from models.user import User
 from models.task import Task
 from schemas.task import TaskCreate, TaskRead, TaskUpdate
-from typing import cast
+from core.database import get_db
+from core.deps import get_current_user
+from core.cache import (
+    tasks_cache_key,
+    cache_get_json,
+    cache_set_json,
+    invalidate_tasks_cache,
+)
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -21,6 +27,9 @@ def create_task(data: TaskCreate, db: Session = Depends(get_db), current_user: U
     db.add(task)
     db.commit()
     db.refresh(task)
+
+    invalidate_tasks_cache(current_user.id)
+
     return task
 
 
@@ -31,8 +40,18 @@ def list_tasks(
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ):
-    """Список тасков"""
-    return (
+    """Список tasks (с Redis кешем)"""
+    user_id = current_user.id
+    key = tasks_cache_key(user_id, limit, offset)
+
+    cached = cache_get_json(key)
+
+    if cached is not None:
+        print("CACHE HIT", key)
+        return cached
+
+    print("CACHE MISS", key)
+    tasks = (
         db.query(Task)
         .filter(Task.id_owner == cast(int, current_user.id))
         .order_by(Task.id.desc())
@@ -41,6 +60,11 @@ def list_tasks(
         .all()
     )
 
+    payload = [TaskRead.model_validate(t).model_dump() for t in tasks]
+    cache_set_json(key, payload)
+
+    return payload
+
 
 @router.get("/{task_id}", response_model=TaskRead)
 def get_task(
@@ -48,7 +72,7 @@ def get_task(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user),
 ):
-    """Инфо по task по id"""
+    """Инфо task по task_id"""
     task = (
         db.query(Task)
         .filter(Task.id == task_id, Task.id_owner == cast(int, current_user.id))
@@ -66,7 +90,7 @@ def update_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Меняет task по id"""
+    """Меняет task по task_id"""
     task = (
         db.query(Task)
         .filter(Task.id == task_id, Task.id_owner == cast(int, current_user.id))
@@ -84,6 +108,9 @@ def update_task(
 
     db.commit()
     db.refresh(task)
+
+    invalidate_tasks_cache(current_user.id)
+
     return task
 
 
@@ -93,7 +120,7 @@ def delete_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Удаляет task по id"""
+    """Удаляет task по task_id"""
     task = (
         db.query(Task)
         .filter(Task.id == task_id, Task.id_owner == cast(int, current_user.id))
@@ -104,4 +131,7 @@ def delete_task(
 
     db.delete(task)
     db.commit()
+
+    invalidate_tasks_cache(current_user.id)
+
     return {"status": "deleted"}
