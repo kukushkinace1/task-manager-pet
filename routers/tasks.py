@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import cast
 from redis.exceptions import RedisError
-import logging
 
 from models.user import User
 from models.task import Task
@@ -15,8 +14,8 @@ from core.cache import (
     cache_set_json,
     invalidate_tasks_cache,
 )
-
-logger = logging.getLogger(__name__)
+from core.celery_tasks import log_action
+from core.config import logger
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -31,6 +30,7 @@ def create_task(data: TaskCreate, db: Session = Depends(get_db), current_user: U
     db.add(task)
     db.commit()
     db.refresh(task)
+    log_action.delay(f"User {current_user.id} created task {task.id}")
     try:
         invalidate_tasks_cache(current_user.id)
     except RedisError as e:
@@ -122,6 +122,8 @@ def update_task(
     db.commit()
     db.refresh(task)
 
+    log_action.delay(f"User {current_user.id} updated task {task.id}")
+
     try:
         invalidate_tasks_cache(current_user.id)
     except RedisError as e:
@@ -147,6 +149,8 @@ def delete_task(
 
     db.delete(task)
     db.commit()
+
+    log_action.delay(f"User {current_user.id} deleted task {task_id}")
 
     try:
         invalidate_tasks_cache(current_user.id)
