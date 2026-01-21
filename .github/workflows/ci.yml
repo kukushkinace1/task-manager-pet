@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  python-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Sync deps (locked)
+        run: uv sync --frozen --no-dev
+
+      # ВАЖНО: НЕ импортируем main.py, потому что он у тебя на import-time
+      # создаёт engine + create_all и может требовать DATABASE_URL/БД.
+      - name: Compile check (no runtime)
+        run: uv run python -m compileall -q .
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: local/task-manager-pet:ci
