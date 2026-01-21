@@ -9,8 +9,17 @@ wheels/
 # Virtual environments
 .venv
 
-# PC
-.env
+# OS
 .DS_Store
+Thumbs.db
+desktop.ini
+
+# Notes
+notes.txt
+
+# IDE
 .idea/
-*.iml
+*.im
+
+# Env / secrets
+.env
