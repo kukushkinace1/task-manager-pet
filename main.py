@@ -12,10 +12,13 @@ from schemas.user import UserRead, UserCreate
 from routers.tasks import router as tasks_router
 
 
-Base.metadata.create_all(bind=engine)
-
 app = FastAPI(title="ToDo Manager")
 app.include_router(tasks_router)
+
+
+@app.on_event("startup")
+def on_startup():
+    Base.metadata.create_all(bind=engine)
 
 
 @app.get("/me")
